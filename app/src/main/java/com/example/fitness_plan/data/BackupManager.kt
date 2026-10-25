@@ -1,0 +1,179 @@
+package com.example.fitness_plan.data
+
+import android.content.ContentValues
+import android.content.Context
+import android.net.Uri
+import android.os.Environment
+import android.provider.MediaStore
+import androidx.room.withTransaction
+import com.example.fitness_plan.data.db.ActiveExerciseEntity
+import com.example.fitness_plan.data.db.AppDatabase
+import com.example.fitness_plan.data.db.EntryDetail
+import com.example.fitness_plan.data.db.ExerciseEntity
+import com.example.fitness_plan.data.db.PlanDayEntity
+import com.example.fitness_plan.data.db.PlanDayExerciseEntity
+import com.example.fitness_plan.data.db.PlanEntity
+import com.example.fitness_plan.data.db.WorkoutEntryEntity
+import com.example.fitness_plan.data.db.WorkoutSessionEntity
+import com.example.fitness_plan.data.model.MuscleGroup
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * 完整备份（JSON，含动作库/计划/今日训练/历史）与 CSV 报表导出。
+ * 文件写到 下载/FitnessPlan 目录，无需存储权限。
+ */
+class BackupManager(private val context: Context, private val db: AppDatabase) {
+
+    private val dao = db.dao()
+
+    suspend fun exportBackup(): Uri = withContext(Dispatchers.IO) {
+        val json = buildBackupJson().toString(2)
+        writeToDownloads("FitnessPlan_${timestamp()}.json", "application/json", json.toByteArray())
+    }
+
+    suspend fun exportCsv(): Uri = withContext(Dispatchers.IO) {
+        val csv = Csv.historyReport(dao.allEntryDetails(), dao.allSessions().associateBy { it.id })
+        // BOM：避免 Excel 打开中文乱码
+        val bytes = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + csv.toByteArray()
+        writeToDownloads("FitnessPlan_${timestamp()}.csv", "text/csv", bytes)
+    }
+
+    /** 用备份文件整体替换当前数据。文件不合法时抛异常且不改动任何数据。 */
+    suspend fun restore(uri: Uri) = withContext(Dispatchers.IO) {
+        val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
+            ?: error("无法读取文件")
+        val root = JSONObject(text)
+        val version = root.optInt("version", 0)
+        require(version == BACKUP_VERSION) {
+            if (version < BACKUP_VERSION) "这是旧版应用的备份（缺少动作库），无法导入" else "备份版本过新，请先升级应用"
+        }
+        val exercises = root.getJSONArray("exercises").map {
+            ExerciseEntity(it.getLong("id"), it.getString("name"), MuscleGroup.fromName(it.getString("muscleGroup")), it.getBoolean("archived"), it.getLong("createdAt"))
+        }
+        val plans = root.getJSONArray("plans").map {
+            PlanEntity(it.getLong("id"), it.getString("name"), it.getInt("sortOrder"), it.getBoolean("isActive"), it.optLongOrNull("currentDayId"))
+        }
+        val days = root.getJSONArray("days").map {
+            PlanDayEntity(it.getLong("id"), it.getLong("planId"), it.getString("name"), it.getInt("sortOrder"))
+        }
+        val dayExercises = root.getJSONArray("dayExercises").map {
+            PlanDayExerciseEntity(it.getLong("id"), it.getLong("dayId"), it.getLong("exerciseId"), it.getInt("sets"), it.getInt("reps"), it.getDouble("weightKg"), it.getInt("sortOrder"))
+        }
+        val active = root.getJSONArray("active").map {
+            ActiveExerciseEntity(it.getLong("id"), it.getLong("exerciseId"), it.getDouble("weightKg"), it.getInt("sets"), it.getInt("reps"), it.getBoolean("completed"), it.getBoolean("inPlan"), it.getInt("sortOrder"))
+        }
+        val sessions = root.getJSONArray("sessions").map {
+            WorkoutSessionEntity(it.getLong("id"), it.getLong("performedAt"), it.optStringOrNull("planName"), it.optStringOrNull("dayName"))
+        }
+        val entries = root.getJSONArray("entries").map {
+            WorkoutEntryEntity(it.getLong("id"), it.getLong("sessionId"), it.getLong("exerciseId"), it.getDouble("weightKg"), it.getInt("sets"), it.getInt("reps"), it.getInt("sortOrder"))
+        }
+
+        db.withTransaction {
+            db.clearAllTables()
+            dao.insertExercises(exercises)
+            dao.insertPlans(plans)
+            dao.insertDays(days)
+            dao.insertDayExercises(dayExercises)
+            dao.insertActives(active)
+            dao.insertSessions(sessions)
+            dao.insertEntries(entries)
+        }
+    }
+
+    private suspend fun buildBackupJson(): JSONObject = JSONObject().apply {
+        put("version", BACKUP_VERSION)
+        put("exportedAt", System.currentTimeMillis())
+        put("exercises", dao.allExercises().toJsonArray {
+            put("id", it.id); put("name", it.name); put("muscleGroup", it.muscleGroup.name)
+            put("archived", it.archived); put("createdAt", it.createdAt)
+        })
+        put("plans", dao.allPlans().toJsonArray {
+            put("id", it.id); put("name", it.name); put("sortOrder", it.sortOrder)
+            put("isActive", it.isActive); put("currentDayId", it.currentDayId ?: JSONObject.NULL)
+        })
+        put("days", dao.allDays().toJsonArray {
+            put("id", it.id); put("planId", it.planId); put("name", it.name); put("sortOrder", it.sortOrder)
+        })
+        put("dayExercises", dao.allDayExercises().toJsonArray {
+            put("id", it.id); put("dayId", it.dayId); put("exerciseId", it.exerciseId)
+            put("sets", it.sets); put("reps", it.reps); put("weightKg", it.weightKg); put("sortOrder", it.sortOrder)
+        })
+        put("active", dao.allActive().toJsonArray {
+            put("id", it.id); put("exerciseId", it.exerciseId); put("weightKg", it.weightKg)
+            put("sets", it.sets); put("reps", it.reps); put("completed", it.completed)
+            put("inPlan", it.inPlan); put("sortOrder", it.sortOrder)
+        })
+        put("sessions", dao.allSessions().toJsonArray {
+            put("id", it.id); put("performedAt", it.performedAt)
+            put("planName", it.planName ?: JSONObject.NULL); put("dayName", it.dayName ?: JSONObject.NULL)
+        })
+        put("entries", dao.allEntries().toJsonArray {
+            put("id", it.id); put("sessionId", it.sessionId); put("exerciseId", it.exerciseId)
+            put("weightKg", it.weightKg); put("sets", it.sets); put("reps", it.reps); put("sortOrder", it.sortOrder)
+        })
+    }
+
+    private fun writeToDownloads(fileName: String, mimeType: String, bytes: ByteArray): Uri {
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/$FOLDER")
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: error("无法创建文件")
+        resolver.openOutputStream(uri)?.use { it.write(bytes) } ?: error("无法写入文件")
+        return uri
+    }
+
+    private fun timestamp() = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+
+    companion object {
+        const val BACKUP_VERSION = 2
+        const val FOLDER = "FitnessPlan"
+    }
+}
+
+object Csv {
+    fun historyReport(entries: List<EntryDetail>, sessions: Map<Long, WorkoutSessionEntity>): String {
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+        return buildString {
+            append("日期,计划,训练日,动作,肌群,重量(kg),组数,次数\n")
+            entries.forEach { d ->
+                val session = sessions[d.entry.sessionId]
+                append(
+                    listOf(
+                        sdf.format(Date(d.performedAt)),
+                        session?.planName.orEmpty(),
+                        session?.dayName.orEmpty(),
+                        d.name,
+                        d.muscleGroup.label,
+                        d.entry.weightKg.toString(),
+                        d.entry.sets.toString(),
+                        d.entry.reps.toString(),
+                    ).joinToString(",") { escape(it) }
+                )
+                append('\n')
+            }
+        }
+    }
+
+    fun escape(value: String): String =
+        if (value.any { it == ',' || it == '"' || it == '\n' }) "\"" + value.replace("\"", "\"\"") + "\""
+        else value
+}
+
+private inline fun <T> List<T>.toJsonArray(block: JSONObject.(T) -> Unit): JSONArray =
+    JSONArray().also { array -> forEach { array.put(JSONObject().apply { block(it) }) } }
+
+private inline fun <T> JSONArray.map(transform: (JSONObject) -> T): List<T> =
+    (0 until length()).map { transform(getJSONObject(it)) }
+
+private fun JSONObject.optLongOrNull(key: String): Long? = if (isNull(key)) null else getLong(key)
+private fun JSONObject.optStringOrNull(key: String): String? = if (isNull(key)) null else getString(key)

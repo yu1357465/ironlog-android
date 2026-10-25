@@ -16,8 +16,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // 【关键修改】注意这里是 url = uri("...") 且是双引号
-        maven { url = uri("https://jitpack.io") }
     }
 }
 
