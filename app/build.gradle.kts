@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.fitness_plan"
+    namespace = "io.github.yu1357465.ironlog"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.fitness_plan"
+        applicationId = "io.github.yu1357465.ironlog"
         minSdk = 26
         targetSdk = 35
         // 版本规则：versionCode = 主版本 × 10000 + 次版本 × 100 + 修订号（0.5.0 → 500），只增不减。

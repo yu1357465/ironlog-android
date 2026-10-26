@@ -1,6 +1,8 @@
-# 健身计划 (Fitness_Plan) 0.5.0
+# IronLog（安卓） 0.5.0
 
-Android 原生力量训练记录应用（开发中，1.0.0 为首个正式发布版本）：按计划轮换训练日、记录每次的重量/组数/次数，并根据历史数据给出各肌群的力量评分。
+Android 原生力量训练记录应用（开发中，1.0.0 为首个正式发布版本）。
+
+网页版见 [ironlog-web](https://github.com/yu1357465/ironlog-web)，两者通过计划分享码和 CSV 训练记录互通，格式见下文。：按计划轮换训练日、记录每次的重量/组数/次数，并根据历史数据给出各肌群的力量评分。
 
 ## 技术栈
 
@@ -17,8 +19,8 @@ Android 原生力量训练记录应用（开发中，1.0.0 为首个正式发布
 ## 目录结构
 
 ```
-app/src/main/java/com/example/fitness_plan/
-├── FitnessApp.kt            Application + 依赖容器（数据库、仓库）
+app/src/main/java/io/github/yu1357465/ironlog/
+├── IronLogApp.kt            Application + 依赖容器（数据库、仓库）
 ├── MainActivity.kt
 ├── data/
 │   ├── db/                  Room 实体、DAO、数据库
@@ -98,4 +100,4 @@ app/src/main/java/com/example/fitness_plan/
 
 ## 备份格式
 
-设置 → 备份全部数据，生成 `下载/FitnessPlan/FitnessPlan_<时间>.json`（`version: 2`，包含动作库、计划、今日训练、历史，以及 `settings`：重量单位、新增动作默认是否加入模板、身高/臂展/体重）。`settings` 为可选字段，没有它的早期备份照常恢复、不改动当前设置。V2.x 旧版的备份缺少动作库，无法导入。
+设置 → 备份全部数据，生成 `下载/IronLog/IronLog_<时间>.json`（`version: 2`，包含动作库、计划、今日训练、历史，以及 `settings`：重量单位、新增动作默认是否加入模板、身高/臂展/体重）。`settings` 为可选字段，没有它的早期备份照常恢复、不改动当前设置。V2.x 旧版的备份缺少动作库，无法导入。

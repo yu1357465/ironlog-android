@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Fitness_Plan"
+rootProject.name = "IronLog"
 include(":app")
