@@ -2,6 +2,7 @@ package com.example.fitness_plan.data
 
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
@@ -53,6 +54,24 @@ class BackupManager(
     suspend fun exportImportTemplate(): Uri = withContext(Dispatchers.IO) {
         val bytes = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + HistoryCsv.template().toByteArray()
         writeToDownloads("训练记录导入模板.csv", "text/csv", bytes)
+    }
+
+    /** 单个计划导出为可读的 JSON 文件。 */
+    suspend fun exportPlanFile(plan: SharedPlan): Uri = withContext(Dispatchers.IO) {
+        writeToDownloads(PlanShare.fileName(plan), "application/json", PlanShare.toJson(plan).toString(2).toByteArray())
+    }
+
+    /** 保存到 图片/FitnessPlan，出现在相册里，方便在微信等应用中选取发送。 */
+    suspend fun savePicture(bitmap: Bitmap, baseName: String): Uri = withContext(Dispatchers.IO) {
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "${baseName}_${timestamp()}.png")
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$FOLDER")
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: error("无法创建图片")
+        resolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } ?: error("无法写入图片")
+        uri
     }
 
     suspend fun readText(uri: Uri): String = withContext(Dispatchers.IO) {

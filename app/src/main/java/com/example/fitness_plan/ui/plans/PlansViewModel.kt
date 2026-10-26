@@ -1,9 +1,18 @@
 package com.example.fitness_plan.ui.plans
 
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.fitness_plan.data.AppSettings
+import com.example.fitness_plan.data.BackupManager
 import com.example.fitness_plan.data.FitnessRepository
+import com.example.fitness_plan.data.PlanShare
+import com.example.fitness_plan.data.PlanShareException
+import com.example.fitness_plan.data.SharedPlan
 import com.example.fitness_plan.data.SettingsRepository
 import com.example.fitness_plan.data.db.ExerciseEntity
 import com.example.fitness_plan.data.db.PlanDayEntity
@@ -29,7 +38,10 @@ data class PlansUiState(
     val exerciseCounts: Map<Long, Int> = emptyMap(),
 )
 
-class PlansViewModel(private val repo: FitnessRepository) : ViewModel() {
+class PlansViewModel(
+    private val repo: FitnessRepository,
+    private val backup: BackupManager,
+) : ViewModel() {
 
     val state: StateFlow<PlansUiState> = combine(repo.plans, repo.allDays, repo.dayExerciseCounts) { plans, days, counts ->
         val byPlan = days.groupBy { it.planId }
@@ -60,7 +72,92 @@ class PlansViewModel(private val repo: FitnessRepository) : ViewModel() {
         repo.copyDayToPlan(day, target.id)
         _messages.send("已复制到「${target.name}」")
     }
+
+    // ---------- 分享 ----------
+
+    /** 正在分享的计划；非 null 时显示分享面板。 */
+    var sharing by mutableStateOf<ShareState?>(null)
+        private set
+
+    fun openShare(plan: PlanEntity) = loadShare(plan.id, includeWeights = false)
+
+    fun setIncludeWeights(value: Boolean) {
+        sharing?.let { loadShare(it.planId, value) }
+    }
+
+    private fun loadShare(planId: Long, includeWeights: Boolean) = viewModelScope.launch {
+        val shared = repo.exportPlan(planId, includeWeights) ?: return@launch
+        sharing = ShareState(planId, includeWeights, shared, PlanShare.encode(shared))
+    }
+
+    fun closeShare() {
+        sharing = null
+    }
+
+    fun exportFile() = viewModelScope.launch {
+        val s = sharing ?: return@launch
+        runCatching { backup.exportPlanFile(s.plan) }
+            .onSuccess { _messages.send("已导出到 下载/${BackupManager.FOLDER}/${PlanShare.fileName(s.plan)}") }
+            .onFailure { _messages.send("导出失败：${it.message}") }
+    }
+
+    /** 保存分享图到相册；[then] 收到保存后的 Uri（用于继续发送）。 */
+    fun savePoster(poster: Bitmap, notify: Boolean, then: (Uri) -> Unit = {}) = viewModelScope.launch {
+        val s = sharing ?: return@launch
+        runCatching { backup.savePicture(poster, "计划_${s.plan.name}".take(40)) }
+            .onSuccess { uri ->
+                if (notify) _messages.send("已保存到相册（图片/${BackupManager.FOLDER}）")
+                then(uri)
+            }
+            .onFailure { _messages.send("保存失败：${it.message}") }
+    }
+
+    /** 在后台生成分享图，成功后交给 [then]。 */
+    fun launchPoster(build: suspend () -> Bitmap?, then: (Bitmap) -> Unit) = viewModelScope.launch {
+        val bmp = build()
+        if (bmp != null) then(bmp) else _messages.send("计划内容太多，无法生成二维码图片")
+    }
+
+    // ---------- 导入 ----------
+
+    var importPreview by mutableStateOf<FitnessRepository.PlanImportPreview?>(null)
+        private set
+
+    /** 分享码文字、含分享码的聊天消息、扫码结果或计划文件内容，统一走这里。 */
+    fun importFromText(text: String) = viewModelScope.launch {
+        try {
+            importPreview = repo.previewPlanImport(PlanShare.decode(text))
+        } catch (e: PlanShareException) {
+            _messages.send(e.message ?: "无法识别")
+        }
+    }
+
+    fun importFromFile(uri: Uri) = viewModelScope.launch {
+        runCatching { backup.readText(uri) }
+            .onSuccess { importFromText(it) }
+            .onFailure { _messages.send("读取失败：${it.message}") }
+    }
+
+    fun dismissImport() {
+        importPreview = null
+    }
+
+    fun confirmImport() = viewModelScope.launch {
+        val preview = importPreview ?: return@launch
+        importPreview = null
+        val plan = repo.importPlan(preview.plan)
+        _messages.send(if (plan.isActive) "已导入并启用「${plan.name}」" else "已导入「${plan.name}」，点「启用」开始使用")
+    }
+
+    fun notify(text: String) = viewModelScope.launch { _messages.send(text) }
 }
+
+data class ShareState(
+    val planId: Long,
+    val includeWeights: Boolean,
+    val plan: SharedPlan,
+    val code: String,
+)
 
 data class PlanDayUiState(
     val loading: Boolean = true,

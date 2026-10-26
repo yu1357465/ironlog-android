@@ -73,5 +73,11 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.reorderable)
 
+    // 二维码：生成/识别图片用 ZXing core；相机扫码用 zxing-android-embedded（不依赖 Google 服务）
+    implementation(libs.zxing.core)
+    implementation(libs.zxing.android.embedded) { isTransitive = false }
+
     testImplementation(libs.junit)
+    // Android 自带的 org.json 在 JVM 单元测试中只是空壳
+    testImplementation(libs.org.json)
 }

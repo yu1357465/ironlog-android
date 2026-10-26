@@ -207,6 +207,65 @@ class FitnessRepository(private val db: AppDatabase) {
         }
     }
 
+    // ---------- 计划分享 ----------
+
+    /** 把计划导出为可分享的模板（不含历史）。 */
+    suspend fun exportPlan(planId: Long, includeWeights: Boolean): SharedPlan? {
+        val plan = dao.getPlan(planId) ?: return null
+        val exercises = dao.allExercises().associateBy { it.id }
+        val days = dao.getDays(planId).map { day ->
+            SharedDay(day.name, dao.getDayExercises(day.id).mapNotNull { t ->
+                val e = exercises[t.exerciseId] ?: return@mapNotNull null
+                SharedExercise(e.name, e.muscleGroup, t.sets, t.reps, if (includeWeights) t.weightKg else null)
+            })
+        }
+        return SharedPlan(plan.name, days)
+    }
+
+    data class PlanImportPreview(
+        val plan: SharedPlan,
+        /** 导入后的计划名；与已有计划重名时自动加序号。 */
+        val finalName: String,
+        val newExercises: List<String>,
+    )
+
+    suspend fun previewPlanImport(shared: SharedPlan): PlanImportPreview {
+        val known = dao.allExercises().filterNot { it.archived }.map { it.name }.toSet()
+        val newOnes = shared.days.flatMap { d -> d.exercises.map { it.name } }.distinct().filter { it !in known }
+        return PlanImportPreview(shared, uniquePlanName(shared.name), newOnes)
+    }
+
+    private suspend fun uniquePlanName(name: String): String {
+        val taken = dao.getPlans().map { it.name }.toSet()
+        if (name !in taken) return name
+        return generateSequence(2) { it + 1 }.map { "$name（$it）" }.first { it !in taken }
+    }
+
+    /**
+     * 作为新计划导入，不影响现有计划。动作按名称匹配动作库，已有的沿用库里的分类。
+     * 没有启用中的计划时，导入的计划直接启用。
+     */
+    suspend fun importPlan(shared: SharedPlan): PlanEntity = db.withTransaction {
+        val planId = dao.insertPlan(PlanEntity(name = uniquePlanName(shared.name), sortOrder = dao.maxPlanOrder() + 1))
+        var firstDayId: Long? = null
+        shared.days.forEachIndexed { i, day ->
+            val dayId = dao.insertDay(PlanDayEntity(planId = planId, name = day.name, sortOrder = i))
+            if (firstDayId == null) firstDayId = dayId
+            val rows = day.exercises.map { e ->
+                obtainExercise(e.name, e.group) to e
+            }.distinctBy { it.first }
+            dao.insertDayExercises(rows.mapIndexed { j, (exerciseId, e) ->
+                PlanDayExerciseEntity(
+                    dayId = dayId, exerciseId = exerciseId, sets = e.sets, reps = e.reps,
+                    weightKg = e.weightKg ?: 0.0, sortOrder = j,
+                )
+            })
+        }
+        dao.updatePlan(dao.getPlan(planId)!!.copy(currentDayId = firstDayId))
+        if (dao.getActivePlan() == null) activatePlanInternal(planId)
+        dao.getPlan(planId)!!
+    }
+
     suspend fun addExerciseToDay(dayId: Long, name: String, group: MuscleGroup, sets: Int, reps: Int, weightKg: Double): Boolean =
         db.withTransaction {
             val exerciseId = obtainExercise(name, group)

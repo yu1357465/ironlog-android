@@ -1,5 +1,8 @@
 package com.example.fitness_plan.ui.plans
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,7 +31,13 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
+import androidx.compose.material.icons.outlined.ContentPaste
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.EventNote
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -37,6 +46,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,9 +54,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,6 +73,11 @@ import com.example.fitness_plan.ui.components.FlatCard
 import com.example.fitness_plan.ui.components.LocalSnackbar
 import com.example.fitness_plan.ui.components.ScreenHeader
 import com.example.fitness_plan.ui.components.TextInputDialog
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private sealed interface PlanDialog {
     data object NewPlan : PlanDialog
@@ -74,16 +91,88 @@ private sealed interface PlanDialog {
 
 @Composable
 fun PlansScreen(onBack: () -> Unit, onOpenDay: (Long) -> Unit) {
-    val vm = appViewModel { PlansViewModel(it.repository) }
+    val vm = appViewModel { PlansViewModel(it.repository, it.backup) }
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = LocalSnackbar.current
     var dialog by remember { mutableStateOf<PlanDialog?>(null) }
 
-    LaunchedEffect(vm) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    // 分享面板是独立窗口，会盖住页面底部的提示条；面板打开时把提示显示在面板里
+    val sheetSnackbar = remember { SnackbarHostState() }
+    LaunchedEffect(vm) {
+        vm.messages.collect { msg ->
+            val host = if (vm.sharing != null) sheetSnackbar else snackbar
+            launch {
+                host.currentSnackbarData?.dismiss()
+                host.showSnackbar(msg)
+            }
+        }
+    }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var importMenu by remember { mutableStateOf(false) }
+    var showPaste by remember { mutableStateOf(false) }
+    val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        result.contents?.let(vm::importFromText)
+    }
+    val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) scope.launch {
+            val text = withContext(Dispatchers.Default) { runCatching { QrCodes.decodeFromImage(context, uri) }.getOrNull() }
+            if (text != null) vm.importFromText(text) else vm.notify("图片里没有识别到二维码")
+        }
+    }
+    val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importFromFile(uri)
+    }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            ScreenHeader("训练计划", onBack = onBack)
+            ScreenHeader("训练计划", onBack = onBack, actions = {
+                Box {
+                    TextButton(onClick = { importMenu = true }) {
+                        Icon(Icons.Outlined.Download, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("导入")
+                    }
+                    DropdownMenu(expanded = importMenu, onDismissRequest = { importMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("扫描二维码") },
+                            leadingIcon = { Icon(Icons.Outlined.QrCodeScanner, null) },
+                            onClick = {
+                                importMenu = false
+                                scanLauncher.launch(
+                                    ScanOptions()
+                                        .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                                        .setPrompt("将计划二维码放入框内")
+                                        .setBeepEnabled(false)
+                                        .setOrientationLocked(false)
+                                )
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("从相册选二维码") },
+                            leadingIcon = { Icon(Icons.Outlined.Image, null) },
+                            onClick = {
+                                importMenu = false
+                                imageLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("粘贴分享码") },
+                            leadingIcon = { Icon(Icons.Outlined.ContentPaste, null) },
+                            onClick = { importMenu = false; showPaste = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("从文件导入") },
+                            leadingIcon = { Icon(Icons.Outlined.Description, null) },
+                            onClick = {
+                                importMenu = false
+                                fileLauncher.launch(arrayOf("application/json", "text/*", "application/octet-stream"))
+                            },
+                        )
+                    }
+                }
+            })
             if (!state.loading && state.plans.isEmpty()) {
                 EmptyState(
                     icon = Icons.Outlined.EventNote,
@@ -109,6 +198,7 @@ fun PlansScreen(onBack: () -> Unit, onOpenDay: (Long) -> Unit) {
                         },
                         onActivate = { vm.activate(pw.plan) },
                         onRename = { dialog = PlanDialog.RenamePlan(pw.plan) },
+                        onShare = { vm.openShare(pw.plan) },
                         onDelete = { dialog = PlanDialog.DeletePlan(pw.plan) },
                         onAddDay = { dialog = PlanDialog.AddDay(pw.plan) },
                         onOpenDay = onOpenDay,
@@ -134,6 +224,10 @@ fun PlansScreen(onBack: () -> Unit, onOpenDay: (Long) -> Unit) {
             modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(20.dp),
         )
     }
+
+    vm.sharing?.let { PlanShareSheet(vm, it, sheetSnackbar) }
+    vm.importPreview?.let { PlanImportDialog(it, onConfirm = { vm.confirmImport() }, onDismiss = vm::dismissImport) }
+    if (showPaste) PasteCodeDialog(onConfirm = { vm.importFromText(it) }, onDismiss = { showPaste = false })
 
     when (val d = dialog) {
         null -> Unit
@@ -184,6 +278,7 @@ private fun PlanCard(
     onMove: (Int) -> Unit,
     onActivate: () -> Unit,
     onRename: () -> Unit,
+    onShare: () -> Unit,
     onDelete: () -> Unit,
     onAddDay: () -> Unit,
     onOpenDay: (Long) -> Unit,
@@ -219,6 +314,7 @@ private fun PlanCard(
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "更多") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("分享") }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { menu = false; onShare() })
                     DropdownMenuItem(text = { Text("重命名") }, leadingIcon = { Icon(Icons.Outlined.DriveFileRenameOutline, null) }, onClick = { menu = false; onRename() })
                     if (canMoveUp) DropdownMenuItem(text = { Text("上移") }, leadingIcon = { Icon(Icons.Outlined.ArrowUpward, null) }, onClick = { menu = false; onMove(-1) })
                     if (canMoveDown) DropdownMenuItem(text = { Text("下移") }, leadingIcon = { Icon(Icons.Outlined.ArrowDownward, null) }, onClick = { menu = false; onMove(1) })
