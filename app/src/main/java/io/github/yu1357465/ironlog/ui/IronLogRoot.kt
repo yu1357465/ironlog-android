@@ -12,11 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.BarChart
-import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
@@ -45,6 +43,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import io.github.yu1357465.ironlog.ui.theme.AppIcons
 import io.github.yu1357465.ironlog.ui.components.LocalSnackbar
 import io.github.yu1357465.ironlog.ui.history.HistoryScreen
 import io.github.yu1357465.ironlog.ui.library.LibraryScreen
@@ -55,7 +54,7 @@ import io.github.yu1357465.ironlog.ui.stats.StatsScreen
 import io.github.yu1357465.ironlog.ui.workout.WorkoutScreen
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector, val selectedIcon: ImageVector) {
-    WORKOUT("workout", "训练", Icons.Outlined.FitnessCenter, Icons.Filled.FitnessCenter),
+    WORKOUT("workout", "训练", AppIcons.MarkOutlined, AppIcons.Mark),
     HISTORY("history", "历史", Icons.Outlined.History, Icons.Filled.History),
     STATS("stats", "分析", Icons.Outlined.BarChart, Icons.Filled.BarChart),
     ME("me", "我的", Icons.Outlined.Person, Icons.Filled.Person),

@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
-import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,6 +37,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.yu1357465.ironlog.ui.theme.AppIcons
 import io.github.yu1357465.ironlog.data.db.PlanDayExerciseDetail
 import io.github.yu1357465.ironlog.ui.appViewModel
 import io.github.yu1357465.ironlog.ui.components.EmptyState
@@ -92,7 +92,7 @@ fun PlanDayScreen(dayId: Long, onBack: () -> Unit) {
             )
             if (!state.loading && list.isEmpty()) {
                 EmptyState(
-                    icon = Icons.Outlined.FitnessCenter,
+                    icon = AppIcons.MarkOutlined,
                     title = "还没有动作",
                     message = "这里设定的组数、次数、重量是默认值；做过一次之后，会自动沿用你上次的实际数据",
                 )

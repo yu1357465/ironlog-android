@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DragHandle
-import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Delete
@@ -80,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.yu1357465.ironlog.ui.theme.AppIcons
 import io.github.yu1357465.ironlog.data.db.ActiveExerciseDetail
 import io.github.yu1357465.ironlog.data.model.WeightUnit
 import io.github.yu1357465.ironlog.ui.appViewModel
@@ -143,7 +143,7 @@ fun WorkoutScreen(onOpenPlans: () -> Unit, onOpenSettings: () -> Unit) {
         if (!state.loading && state.items.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 EmptyState(
-                    icon = Icons.Default.FitnessCenter,
+                    icon = AppIcons.Mark,
                     title = if (state.context.plan == null) "还没有启用的计划" else "这一天还没有动作",
                     message = if (state.context.plan == null) "可以直接添加动作自由训练，或去创建一个训练计划"
                     else "添加的动作会默认保存进训练日模板，下次自动出现",

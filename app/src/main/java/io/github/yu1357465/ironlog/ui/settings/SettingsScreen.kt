@@ -25,7 +25,6 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.EventNote
-import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.AlertDialog
@@ -61,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import io.github.yu1357465.ironlog.ui.theme.AppIcons
 import io.github.yu1357465.ironlog.BuildConfig
 import io.github.yu1357465.ironlog.data.AppSettings
 import io.github.yu1357465.ironlog.data.BackupManager
@@ -210,7 +210,7 @@ fun SettingsScreen(onOpenPlans: () -> Unit, onOpenLibrary: () -> Unit) {
             FlatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 NavRow(Icons.Outlined.EventNote, "训练计划", "管理计划和每个训练日的动作", onOpenPlans)
                 Divider()
-                NavRow(Icons.Outlined.FitnessCenter, "动作库", "新建、改名、调整肌群分类", onOpenLibrary)
+                NavRow(AppIcons.MarkOutlined, "动作库", "新建、改名、调整肌群分类", onOpenLibrary)
             }
 
             SectionTitle("偏好")
