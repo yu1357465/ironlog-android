@@ -87,4 +87,4 @@ app/src/main/java/com/example/fitness_plan/
 
 ## 备份格式
 
-设置 → 备份全部数据，生成 `下载/FitnessPlan/FitnessPlan_<时间>.json`（`version: 2`，包含动作库、计划、今日训练和历史）。V2.x 旧版的备份缺少动作库，无法导入。
+设置 → 备份全部数据，生成 `下载/FitnessPlan/FitnessPlan_<时间>.json`（`version: 2`，包含动作库、计划、今日训练、历史，以及 `settings`：重量单位、新增动作默认是否加入模板、身高/臂展/体重）。`settings` 为可选字段，没有它的早期备份照常恢复、不改动当前设置。V2.x 旧版的备份缺少动作库，无法导入。

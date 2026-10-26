@@ -16,6 +16,7 @@ import com.example.fitness_plan.data.db.PlanEntity
 import com.example.fitness_plan.data.db.WorkoutEntryEntity
 import com.example.fitness_plan.data.db.WorkoutSessionEntity
 import com.example.fitness_plan.data.model.MuscleGroup
+import com.example.fitness_plan.data.model.WeightUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -25,10 +26,14 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 完整备份（JSON，含动作库/计划/今日训练/历史）与 CSV 报表导出。
+ * 完整备份（JSON，含动作库/计划/今日训练/历史，以及身体数据和偏好设置）与 CSV 报表导出。
  * 文件写到 下载/FitnessPlan 目录，无需存储权限。
  */
-class BackupManager(private val context: Context, private val db: AppDatabase) {
+class BackupManager(
+    private val context: Context,
+    private val db: AppDatabase,
+    private val settings: SettingsRepository,
+) {
 
     private val dao = db.dao()
 
@@ -90,6 +95,19 @@ class BackupManager(private val context: Context, private val db: AppDatabase) {
         val entries = root.getJSONArray("entries").map {
             WorkoutEntryEntity(it.getLong("id"), it.getLong("sessionId"), it.getLong("exerciseId"), it.getDouble("weightKg"), it.getInt("sets"), it.getInt("reps"), it.getInt("sortOrder"))
         }
+        // 设置是后来加入的可选字段：较早的备份没有它，恢复时保留当前设置不变
+        val restoredSettings = root.optJSONObject("settings")?.let { s ->
+            val body = s.optJSONObject("body")
+            AppSettings(
+                unit = WeightUnit.entries.firstOrNull { it.name == s.optString("unit") } ?: WeightUnit.KG,
+                addToPlanByDefault = s.optBoolean("addToPlanByDefault", true),
+                body = BodyMetrics(
+                    heightCm = body?.optDouble("heightCm", 0.0)?.toFloat() ?: 0f,
+                    wingspanCm = body?.optDouble("wingspanCm", 0.0)?.toFloat() ?: 0f,
+                    bodyWeightKg = body?.optDouble("bodyWeightKg", 0.0)?.toFloat() ?: 0f,
+                ),
+            )
+        }
 
         db.withTransaction {
             db.clearAllTables()
@@ -101,11 +119,22 @@ class BackupManager(private val context: Context, private val db: AppDatabase) {
             dao.insertSessions(sessions)
             dao.insertEntries(entries)
         }
+        restoredSettings?.let { settings.replaceAll(it) }
     }
 
     private suspend fun buildBackupJson(): JSONObject = JSONObject().apply {
         put("version", BACKUP_VERSION)
         put("exportedAt", System.currentTimeMillis())
+        val s = settings.current()
+        put("settings", JSONObject().apply {
+            put("unit", s.unit.name)
+            put("addToPlanByDefault", s.addToPlanByDefault)
+            put("body", JSONObject().apply {
+                put("heightCm", s.body.heightCm.toDouble())
+                put("wingspanCm", s.body.wingspanCm.toDouble())
+                put("bodyWeightKg", s.body.bodyWeightKg.toDouble())
+            })
+        })
         put("exercises", dao.allExercises().toJsonArray {
             put("id", it.id); put("name", it.name); put("muscleGroup", it.muscleGroup.name)
             put("archived", it.archived); put("createdAt", it.createdAt)

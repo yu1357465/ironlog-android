@@ -4,6 +4,9 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -30,6 +33,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavBackStackEntry
@@ -77,10 +82,21 @@ fun FitnessAppRoot() {
             contentWindowInsets = WindowInsets(0),
             bottomBar = { if (showBar) BottomBar(nav, route) },
         ) { padding ->
+            // 从文件选择器等其他界面返回时，窗口重新获得焦点，Compose 会把焦点自动移入
+            // 页面左上角最近的可聚焦元素；页面里有输入框时就会弹出键盘。
+            // 放一个不可见的焦点锚点在最左上角接住这次自动聚焦。点击输入框不受影响。
+            Box(
+                Modifier
+                    .size(1.dp)
+                    .clearAndSetSemantics {}
+                    .focusable(),
+            )
             NavHost(
                 navController = nav,
                 startDestination = Tab.WORKOUT.route,
-                modifier = Modifier.fillMaxSize().padding(padding),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
                 // 默认是 700ms 交叉淡入淡出，两个页面同时绘制，切换时明显拖沓
                 enterTransition = {
                     if (isTabSwitch()) fadeIn(tween(TAB_FADE_MS))

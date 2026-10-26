@@ -14,7 +14,7 @@ class AppContainer(app: Application) {
     private val database = AppDatabase.build(app)
     val repository = FitnessRepository(database)
     val settings = SettingsRepository(app)
-    val backup = BackupManager(app, database)
+    val backup = BackupManager(app, database, settings)
 }
 
 class FitnessApp : Application() {

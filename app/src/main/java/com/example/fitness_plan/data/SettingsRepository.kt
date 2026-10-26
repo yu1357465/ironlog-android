@@ -62,6 +62,17 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { it[Keys.addToPlan] = value }
     }
 
+    /** 从备份恢复时一次性写入全部设置。 */
+    suspend fun replaceAll(s: AppSettings) {
+        context.dataStore.edit {
+            it[Keys.unit] = s.unit.name
+            it[Keys.addToPlan] = s.addToPlanByDefault
+            it[Keys.height] = s.body.heightCm
+            it[Keys.wingspan] = s.body.wingspanCm
+            it[Keys.bodyWeight] = s.body.bodyWeightKg
+        }
+    }
+
     suspend fun setBodyMetrics(body: BodyMetrics) {
         context.dataStore.edit {
             it[Keys.height] = body.heightCm

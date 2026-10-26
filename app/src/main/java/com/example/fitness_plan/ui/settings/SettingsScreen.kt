@@ -265,7 +265,7 @@ fun SettingsScreen(onOpenPlans: () -> Unit, onOpenLibrary: () -> Unit) {
 
             SectionTitle("数据")
             FlatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                ActionRow(Icons.Outlined.Backup, "备份全部数据", "保存为 JSON 到 下载/${BackupManager.FOLDER}", enabled = !vm.busy) { vm.exportBackup(open) }
+                ActionRow(Icons.Outlined.Backup, "备份全部数据", "含身体数据和设置，保存到 下载/${BackupManager.FOLDER}", enabled = !vm.busy) { vm.exportBackup(open) }
                 Divider()
                 ActionRow(Icons.Outlined.Restore, "从备份恢复", "会覆盖当前所有数据", enabled = !vm.busy) {
                     restoreLauncher.launch(arrayOf("application/json", "application/octet-stream", "text/plain"))
@@ -291,7 +291,7 @@ fun SettingsScreen(onOpenPlans: () -> Unit, onOpenLibrary: () -> Unit) {
 
     pendingRestore?.let { uri ->
         ConfirmDialog(
-            "从备份恢复？", "当前所有计划、动作和历史记录都会被备份文件中的内容替换。建议先备份一次当前数据。",
+            "从备份恢复？", "当前所有计划、动作、历史记录，以及身体数据和偏好设置，都会被备份文件中的内容替换。建议先备份一次当前数据。",
             "恢复", onConfirm = { vm.restore(uri) }, onDismiss = { pendingRestore = null }, destructive = true,
         )
     }
