@@ -4,6 +4,7 @@ import com.example.fitness_plan.data.Csv
 import com.example.fitness_plan.data.model.MuscleGroup
 import com.example.fitness_plan.data.model.WeightUnit
 import com.example.fitness_plan.domain.Lift
+import com.example.fitness_plan.domain.LiftStandards
 import com.example.fitness_plan.domain.RadarMode
 import com.example.fitness_plan.domain.Strength
 import com.example.fitness_plan.ui.components.formatNumber
@@ -64,6 +65,35 @@ class StrengthTest {
     fun pullUpsCountBodyweight() {
         val back = score(lift("引体向上", MuscleGroup.BACK, 0.0, 8)).getValue(MuscleGroup.BACK)
         assertEquals(82.8f, back, 0.2f)
+    }
+
+    @Test
+    fun rulesMatchTheRightExercise() {
+        // “器械反向飞鸟”含“飞鸟”，但应按肩后束而非胸部夹胸评分
+        assertEquals(0.8, LiftStandards.forExercise("器械反向飞鸟", MuscleGroup.SHOULDERS).ratio, 0.0)
+        assertEquals(1.1, LiftStandards.forExercise("蝴蝶机夹胸", MuscleGroup.CHEST).ratio, 0.0)
+        // “上斜哑铃弯举”不应被当成上斜卧推
+        assertEquals(0.38, LiftStandards.forExercise("上斜哑铃弯举", MuscleGroup.ARMS).ratio, 0.0)
+        assertEquals(0.45, LiftStandards.forExercise("上斜哑铃卧推", MuscleGroup.CHEST).ratio, 0.0)
+        // 手撑高处的上斜俯卧撑负荷比标准俯卧撑轻
+        assertEquals(0.45, LiftStandards.forExercise("上斜俯卧撑", MuscleGroup.CHEST).bodyweightFraction, 0.0)
+    }
+
+    @Test
+    fun fifteenPushUpsAreIntermediateNotFull() {
+        // 旧标准下 15 个俯卧撑接近满分
+        assertEquals(65.0f, score(lift("自重俯卧撑", MuscleGroup.CHEST, 0.0, 15)).getValue(MuscleGroup.CHEST), 0.2f)
+    }
+
+    @Test
+    fun assistedPullUpsDoNotCountFullBodyweight() {
+        assertEquals(0f, score(lift("辅助引体向上", MuscleGroup.BACK, 0.0, 12)).getValue(MuscleGroup.BACK), 0f)
+    }
+
+    @Test
+    fun straightArmPulldownUsesItsOwnStandard() {
+        // 0.6 倍体重为满分：17kg×8 → Brzycki 21.1 / 42 ≈ 50
+        assertEquals(50.3f, score(lift("直臂下拉", MuscleGroup.BACK, 17.0, 8)).getValue(MuscleGroup.BACK), 0.2f)
     }
 
     @Test

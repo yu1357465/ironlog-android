@@ -19,13 +19,18 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Backup
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.EventNote
 import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -47,7 +52,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -59,6 +66,8 @@ import com.example.fitness_plan.data.AppSettings
 import com.example.fitness_plan.data.BackupManager
 import com.example.fitness_plan.data.BodyMetrics
 import com.example.fitness_plan.data.FitnessRepository
+import com.example.fitness_plan.data.HistoryCsv
+import com.example.fitness_plan.data.ImportPlan
 import com.example.fitness_plan.data.SettingsRepository
 import com.example.fitness_plan.data.model.WeightUnit
 import com.example.fitness_plan.ui.UiMessage
@@ -68,6 +77,7 @@ import com.example.fitness_plan.ui.components.FlatCard
 import com.example.fitness_plan.ui.components.LocalSnackbar
 import com.example.fitness_plan.ui.components.ScreenHeader
 import com.example.fitness_plan.ui.components.SectionTitle
+import com.example.fitness_plan.ui.components.formatFullDate
 import com.example.fitness_plan.ui.components.formatNumber
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharingStarted
@@ -119,6 +129,41 @@ class SettingsViewModel(
         UiMessage("恢复完成")
     }
 
+    /** 待确认的导入计划；非 null 时显示预览对话框。 */
+    var importPreview by mutableStateOf<ImportPlan?>(null)
+        private set
+
+    fun exportTemplate(open: (Uri, String) -> Unit) = runTask {
+        val uri = backup.exportImportTemplate()
+        UiMessage("模板已保存到 下载/${BackupManager.FOLDER}", "打开") { open(uri, "text/csv") }
+    }
+
+    /** 读取并解析文件，对照现有数据生成导入计划，交给用户预览确认。 */
+    fun prepareImport(uri: Uri) = viewModelScope.launch {
+        if (busy) return@launch
+        busy = true
+        try {
+            importPreview = repo.planImport(HistoryCsv.parse(backup.readText(uri)))
+        } catch (e: Exception) {
+            _messages.send(UiMessage("读取失败：${e.message}"))
+        } finally {
+            busy = false
+        }
+    }
+
+    fun dismissImport() {
+        importPreview = null
+    }
+
+    fun confirmImport() {
+        val plan = importPreview ?: return
+        importPreview = null
+        runTask {
+            repo.applyImport(plan)
+            UiMessage("已导入 ${plan.sessions.size} 次训练、${plan.entryCount} 条记录")
+        }
+    }
+
     fun clearHistory() = runTask {
         repo.clearHistory()
         UiMessage("历史记录已清空")
@@ -152,6 +197,10 @@ fun SettingsScreen(onOpenPlans: () -> Unit, onOpenLibrary: () -> Unit) {
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) pendingRestore = uri
     }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.prepareImport(uri)
+    }
+    val clipboard = LocalClipboardManager.current
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("我的")
@@ -198,6 +247,22 @@ fun SettingsScreen(onOpenPlans: () -> Unit, onOpenLibrary: () -> Unit) {
             SectionTitle("身体数据（用于力量评分）")
             BodyMetricsCard(s, vm::saveBody)
 
+            SectionTitle("从其他记录导入")
+            FlatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                ActionRow(Icons.Outlined.Description, "① 导出导入模板", "带示例的 CSV，照着格式填写即可", enabled = !vm.busy) {
+                    vm.exportTemplate(open)
+                }
+                Divider()
+                ActionRow(Icons.Outlined.AutoAwesome, "② 复制 AI 提示词", "连同旧记录发给 AI，让它转换成可导入的格式") {
+                    clipboard.setText(AnnotatedString(HistoryCsv.aiPrompt))
+                    scope.launch { snackbar.showSnackbar("已复制。粘贴到 AI 对话框后，在末尾附上你的原始记录") }
+                }
+                Divider()
+                ActionRow(Icons.Outlined.FileUpload, "③ 导入训练记录", "选择 CSV 文件，预览确认后追加到历史", enabled = !vm.busy) {
+                    importLauncher.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/octet-stream"))
+                }
+            }
+
             SectionTitle("数据")
             FlatCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 ActionRow(Icons.Outlined.Backup, "备份全部数据", "保存为 JSON 到 下载/${BackupManager.FOLDER}", enabled = !vm.busy) { vm.exportBackup(open) }
@@ -230,12 +295,74 @@ fun SettingsScreen(onOpenPlans: () -> Unit, onOpenLibrary: () -> Unit) {
             "恢复", onConfirm = { vm.restore(uri) }, onDismiss = { pendingRestore = null }, destructive = true,
         )
     }
+    vm.importPreview?.let { plan ->
+        ImportPreviewDialog(plan, onConfirm = vm::confirmImport, onDismiss = vm::dismissImport)
+    }
     if (confirmClear) {
         ConfirmDialog(
             "清空所有历史记录？", "此操作无法撤销。建议先备份。", "清空",
             onConfirm = vm::clearHistory, onDismiss = { confirmClear = false }, destructive = true,
         )
     }
+}
+
+@Composable
+private fun ImportPreviewDialog(plan: ImportPlan, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val rows = plan.sessions.flatten()
+    val canImport = plan.entryCount > 0
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (canImport) "确认导入" else "没有可导入的记录") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (canImport) {
+                    Text("${plan.sessions.size} 次训练、${plan.entryCount} 条记录", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "${formatFullDate(rows.minOf { it.performedAt })} — ${formatFullDate(rows.maxOf { it.performedAt })}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (plan.newExercises.isNotEmpty()) {
+                    Text(
+                        "将新建 ${plan.newExercises.size} 个动作：" + plan.newExercises.take(12).joinToString("、") +
+                            if (plan.newExercises.size > 12) " 等" else "",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (plan.duplicates > 0) {
+                    Text(
+                        "跳过 ${plan.duplicates} 条已存在的记录",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (plan.issues.isNotEmpty()) {
+                    Text("${plan.issues.size} 行无法识别，将被忽略：", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                    plan.issues.take(8).forEach {
+                        Text(
+                            if (it.line > 0) "第 ${it.line} 行：${it.message}" else it.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (plan.issues.size > 8) Text("……", style = MaterialTheme.typography.bodySmall)
+                }
+                if (canImport) {
+                    Text(
+                        "记录会追加到历史中，不影响已有数据。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (canImport) TextButton(onClick = onConfirm) { Text("导入") }
+            else TextButton(onClick = onDismiss) { Text("知道了") }
+        },
+        dismissButton = { if (canImport) TextButton(onClick = onDismiss) { Text("取消") } },
+    )
 }
 
 @Composable

@@ -51,14 +51,21 @@ object LiftStandards {
         rule("深蹲") { std(if (it == Equipment.MACHINE) 2.0 else 1.75) },
         rule("腿举", "倒蹬") { std(3.0) },
         rule("臀推", "臀桥") { std(2.25) },
-        rule("腿屈伸", "腿弯举", "腿外展", "腿内收") { std(1.0) },
+        rule("腿弯举") { std(1.4) },
+        rule("腿屈伸") { std(1.3) },
+        rule("腿外展", "腿内收") { std(1.0) },
         rule("提踵") { std(1.5) },
+        // ---- 肩后束（须在胸部“飞鸟”之前匹配）----
+        rule("反向飞鸟", "后束飞鸟", "俯身飞鸟") { std(if (it == Equipment.MACHINE) 0.8 else 0.25) },
         // ---- 胸 ----
         rule("仰卧臂屈伸", "颅骨粉碎") { std(if (it == Equipment.DUMBBELL) 0.3 else 0.6) },
         rule("双杠臂屈伸", "双杠") { LiftStandard(1.6, Leverage.PUSH, bodyweightFraction = 1.0) },
-        rule("俯卧撑") { LiftStandard(1.0, Leverage.PUSH, bodyweightFraction = 0.65) },
-        rule("夹胸", "飞鸟", "蝴蝶机") { std(if (it == Equipment.DUMBBELL) 0.3 else 0.65) },
-        rule("上斜") { std(if (it == Equipment.DUMBBELL) 0.45 else 1.25, Leverage.PUSH) },
+        // 俯卧撑与卧推同标准；手撑高处的上斜俯卧撑负荷约 45% 体重，脚垫高的下斜约 75%
+        rule("上斜俯卧撑") { LiftStandard(1.5, Leverage.PUSH, bodyweightFraction = 0.45) },
+        rule("下斜俯卧撑") { LiftStandard(1.5, Leverage.PUSH, bodyweightFraction = 0.75) },
+        rule("俯卧撑") { LiftStandard(1.5, Leverage.PUSH, bodyweightFraction = 0.65) },
+        rule("夹胸", "飞鸟", "蝴蝶机") { std(if (it == Equipment.DUMBBELL) 0.35 else 1.1) },
+        rule("上斜卧推", "上斜哑铃卧推", "上斜杠铃卧推", "上斜推") { std(if (it == Equipment.DUMBBELL) 0.45 else 1.25, Leverage.PUSH) },
         rule("卧推") {
             when (it) {
                 Equipment.DUMBBELL -> std(0.55, Leverage.PUSH)
@@ -68,13 +75,15 @@ object LiftStandards {
         },
         rule("推胸") { std(1.4, Leverage.PUSH) },
         // ---- 背 ----
+        // 辅助引体：记录的“重量”是辅助量而非负重，无法换算，不计入体重以免高估
+        rule("辅助引体", "弹力带引体") { std(1.15, Leverage.PULL) },
         rule("引体") { LiftStandard(1.5, Leverage.PULL, bodyweightFraction = 1.0) },
+        rule("直臂下拉", "直臂下压") { std(0.6, Leverage.PULL) },
         rule("下拉") { std(1.15, Leverage.PULL) },
         rule("划船") { std(if (it == Equipment.DUMBBELL) 0.65 else 1.2, Leverage.PULL) },
-        rule("直臂下压") { std(0.6, Leverage.PULL) },
         rule("耸肩") { std(if (it == Equipment.DUMBBELL) 0.7 else 1.5) },
         // ---- 肩 ----
-        rule("侧平举", "前平举", "后束飞鸟", "反向飞鸟") { std(if (it == Equipment.MACHINE) 0.35 else 0.22) },
+        rule("侧平举", "前平举") { std(if (it == Equipment.MACHINE) 0.35 else 0.22) },
         rule("面拉") { std(0.6, Leverage.PULL) },
         rule("推举", "肩推") {
             when (it) {

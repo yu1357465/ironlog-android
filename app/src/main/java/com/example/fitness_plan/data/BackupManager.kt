@@ -44,6 +44,22 @@ class BackupManager(private val context: Context, private val db: AppDatabase) {
         writeToDownloads("FitnessPlan_${timestamp()}.csv", "text/csv", bytes)
     }
 
+    /** 导入模板：带示例的 CSV，与训练报表同格式。 */
+    suspend fun exportImportTemplate(): Uri = withContext(Dispatchers.IO) {
+        val bytes = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + HistoryCsv.template().toByteArray()
+        writeToDownloads("训练记录导入模板.csv", "text/csv", bytes)
+    }
+
+    suspend fun readText(uri: Uri): String = withContext(Dispatchers.IO) {
+        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.let(::decode) ?: error("无法读取文件")
+    }
+
+    /** 优先按 UTF-8 解码；Excel 另存的中文 CSV 常是 GBK，UTF-8 解出乱码时改用 GBK。 */
+    private fun decode(bytes: ByteArray): String {
+        val utf8 = bytes.decodeToString()
+        return if ('�' in utf8) String(bytes, charset("GBK")) else utf8
+    }
+
     /** 用备份文件整体替换当前数据。文件不合法时抛异常且不改动任何数据。 */
     suspend fun restore(uri: Uri) = withContext(Dispatchers.IO) {
         val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
@@ -144,7 +160,7 @@ object Csv {
     fun historyReport(entries: List<EntryDetail>, sessions: Map<Long, WorkoutSessionEntity>): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
         return buildString {
-            append("日期,计划,训练日,动作,肌群,重量(kg),组数,次数\n")
+            append(HistoryCsv.HEADER).append('\n')
             entries.forEach { d ->
                 val session = sessions[d.entry.sessionId]
                 append(

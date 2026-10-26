@@ -447,6 +447,36 @@ class FitnessRepository(private val db: AppDatabase) {
 
     suspend fun clearHistory() = dao.clearHistory()
 
+    /** 对照数据库，生成导入计划（不写入）。 */
+    suspend fun planImport(parsed: ParsedImport): ImportPlan {
+        val existing = dao.allEntryDetails().map {
+            HistoryCsv.key(it.performedAt, it.name, it.entry.weightKg, it.entry.sets, it.entry.reps)
+        }
+        val known = dao.allExercises().filterNot { it.archived }.map { it.name }.toSet()
+        return HistoryCsv.plan(parsed, existing, known)
+    }
+
+    /** 按导入计划写入历史；全部在一个事务里，失败则什么都不写。 */
+    suspend fun applyImport(plan: ImportPlan) = db.withTransaction {
+        plan.sessions.forEach { rows ->
+            val first = rows.first()
+            val sessionId = dao.insertSession(
+                WorkoutSessionEntity(
+                    performedAt = rows.minOf { it.performedAt },
+                    planName = first.planName ?: "导入",
+                    dayName = first.dayName,
+                )
+            )
+            dao.insertEntries(rows.mapIndexed { i, r ->
+                WorkoutEntryEntity(
+                    sessionId = sessionId,
+                    exerciseId = obtainExercise(r.exercise, r.group ?: HistoryCsv.guessGroup(r.exercise)),
+                    weightKg = r.weightKg, sets = r.sets, reps = r.reps, sortOrder = i,
+                )
+            })
+        }
+    }
+
     // ======================================================
     //  首次启动的默认数据
     // ======================================================

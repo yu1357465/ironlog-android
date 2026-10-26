@@ -137,7 +137,7 @@ fun HistoryScreen() {
         if (!state.loading && state.sessions.isEmpty()) {
             EmptyState(
                 Icons.Outlined.History, "还没有训练记录",
-                "在训练页完成训练后会自动存档到这里；之前练过的也可以手动补录",
+                "在训练页完成训练后会自动存档到这里；之前练过的可以手动补录，也可以在「我的 → 从其他记录导入」里批量导入",
                 action = { OutlinedButton(onClick = { pickingManual = true }) { Text("补录一条") } },
             )
         }
