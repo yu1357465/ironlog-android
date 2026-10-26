@@ -38,6 +38,22 @@ class PlanShareTest {
     }
 
     @Test
+    fun decodesCodeFromWebVersion() {
+        // 由 ironlog-web 后端 share.encode() 生成；两端格式改动时这里会失败（对应 web 的 test_decodes_code_from_android）
+        val webCode = "FP1:eNqrViqpLEhVslJKyyzJSy0u1i3IScxT0lEqSy0qzszPU7Iy1FHKS8wFqXjWt-JZd-eL1v0KAQE-QCUpiZXFSlbR1UjyT7tmP5u-" +
+            "FCiXWpFalJxZnIqqYO6Cl5Obn-7c_Gzu_qe9y4HqgSrTi_JLC4CSzh6uwSFAfnFqCVCTiY5SUWoBkGGho1SempmeUeKdrmRlZqBnUKsDN-_p5IlA" +
+            "84DGPNmxD8mkYA__UB8X16BguGnGMNMMDWpjkQwA-uVl8wqCLn62feOLnZuQbPBxdUcYbgoz3BTZqRYgp8YCIQAvjYc_"
+        val expected = SharedPlan("推拉腿 PPL", listOf(
+            SharedDay("推力日", listOf(
+                SharedExercise("杠铃平板卧推", MuscleGroup.CHEST, 4, 8, 60.0),
+                SharedExercise("哑铃推举", MuscleGroup.SHOULDERS, 3, 10, null),
+            )),
+            SharedDay("腿部日", listOf(SharedExercise("杠铃深蹲", MuscleGroup.LEGS, 5, 5, 80.0))),
+        ))
+        assertEquals(expected, PlanShare.decode(webCode))
+    }
+
+    @Test
     fun jsonFileRoundTrips() {
         assertEquals(ppl, PlanShare.decode(PlanShare.toJson(ppl).toString(2)))
     }

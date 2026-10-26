@@ -58,6 +58,19 @@ class HistoryImportTest {
     }
 
     @Test
+    fun webExportImportsCleanly() {
+        // ironlog-web 导出的表头与英文肌群名
+        val csv = "date,plan,day,exercise,muscle_group,weight_kg,sets,reps\n" +
+            "2026-10-20 18:30,Push Pull Legs,Push,Barbell Bench Press,Chest,62.5,4,8\n" +
+            "2026-10-22 18:30,Push Pull Legs,Legs,Barbell Back Squat,Legs & glutes,100,5,5\n"
+        val parsed = HistoryCsv.parse(csv)
+        assertTrue(parsed.issues.isEmpty())
+        assertEquals(listOf(MuscleGroup.CHEST, MuscleGroup.LEGS), parsed.rows.map { it.group })
+        assertEquals(62.5, parsed.rows[0].weightKg, 0.0)
+        assertEquals("Push", parsed.rows[0].dayName)
+    }
+
+    @Test
     fun englishHeadersAndPoundsAreConverted() {
         val r = HistoryCsv.parse("date,exercise,weight (lbs),sets,reps\n2026/10/02,Bench,220.462,3,5").rows.single()
         assertEquals(100.0, r.weightKg, 1e-6)
