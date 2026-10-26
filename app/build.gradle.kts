@@ -13,8 +13,10 @@ android {
         applicationId = "com.example.fitness_plan"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "3.0"
+        // 版本规则：versionCode = 主版本 × 10000 + 次版本 × 100 + 修订号（0.5.0 → 500），只增不减。
+        // 1.0.0 留给第一个正式发布的版本。
+        versionCode = 500
+        versionName = "0.5.0"
     }
 
     buildTypes {
