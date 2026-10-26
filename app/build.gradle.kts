@@ -25,20 +25,15 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // 自用阶段：用本机 Android SDK 自带的调试签名，打包无需密码。
+            // 换电脑后调试签名不同，需要先卸载手机上的旧版才能安装。
+            signingConfig = signingConfigs.getByName("debug")
         }
         debug {
-            // 调试版与正式版并存，互不影响数据
+            // 调试版与正式版并存，互不影响数据。
+            // 注意：调试版的 Compose 未经优化，动画掉帧不代表正式版的表现。
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-DEV"
-        }
-        // 与正式版同样经过 R8 优化、但用调试签名的版本，用于在真机上体验真实流畅度。
-        // 调试版的 Compose 未经优化，动画掉帧不代表正式版的表现。
-        create("preview") {
-            initWith(getByName("release"))
-            signingConfig = signingConfigs.getByName("debug")
-            applicationIdSuffix = ".preview"
-            versionNameSuffix = "-PREVIEW"
-            matchingFallbacks += listOf("release")
         }
     }
     compileOptions {

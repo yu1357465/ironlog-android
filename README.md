@@ -62,11 +62,13 @@ app/src/main/java/com/example/fitness_plan/
 
 ```bash
 ./gradlew assembleDebug        # 调试版，包名带 .dev 后缀，可与正式版共存
-./gradlew assemblePreview      # 体验版：与正式版同样经 R8 优化，调试签名，包名带 .preview
+./gradlew assembleRelease      # 正式版：R8 优化，使用本机调试签名（无需密码）
 ./gradlew testDebugUnitTest    # 单元测试
 ```
 
-调试版的 Compose 没有经过优化，动画明显比正式版卡（实测拖拽排序约 6 成帧超时，体验版约 1 成且无严重卡顿）。判断流畅度请用体验版或正式版。
+调试版的 Compose 没有经过优化，动画明显比正式版卡（实测拖拽排序约 6 成帧超时，正式版约 1 成且无严重卡顿）。判断流畅度请用正式版。
+
+正式版使用本机 Android SDK 的调试签名（`~/.android/debug.keystore`）。换一台电脑打包时签名会不同，手机上需要先卸载旧版再安装。
 
 ## 力量评分
 
