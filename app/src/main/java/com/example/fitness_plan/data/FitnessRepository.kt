@@ -14,11 +14,13 @@ import com.example.fitness_plan.data.db.PlanEntity
 import com.example.fitness_plan.data.db.WorkoutEntryEntity
 import com.example.fitness_plan.data.db.WorkoutSessionEntity
 import com.example.fitness_plan.data.model.MuscleGroup
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
 /** 首页顶部显示的“当前计划 + 当前训练日”。 */
@@ -419,7 +421,7 @@ class FitnessRepository(private val db: AppDatabase) {
         combine(dao.observeSessions(), dao.observeAllEntries()) { sessions, entries ->
             val bySession = entries.groupBy { it.entry.sessionId }
             sessions.map { SessionWithEntries(it, bySession[it.id].orEmpty()) }
-        }
+        }.flowOn(Dispatchers.Default)
 
     suspend fun updateEntry(entry: WorkoutEntryEntity) = dao.updateEntry(entry)
 

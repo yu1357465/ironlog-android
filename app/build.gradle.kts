@@ -31,6 +31,15 @@ android {
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-DEV"
         }
+        // 与正式版同样经过 R8 优化、但用调试签名的版本，用于在真机上体验真实流畅度。
+        // 调试版的 Compose 未经优化，动画掉帧不代表正式版的表现。
+        create("preview") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-PREVIEW"
+            matchingFallbacks += listOf("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

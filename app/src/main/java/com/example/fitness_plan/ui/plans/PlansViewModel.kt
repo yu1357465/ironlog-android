@@ -11,7 +11,9 @@ import com.example.fitness_plan.data.db.PlanDayExerciseDetail
 import com.example.fitness_plan.data.db.PlanDayExerciseEntity
 import com.example.fitness_plan.data.db.PlanEntity
 import com.example.fitness_plan.data.model.MuscleGroup
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -36,7 +38,7 @@ class PlansViewModel(private val repo: FitnessRepository) : ViewModel() {
             plans = plans.map { PlanWithDays(it, byPlan[it.id].orEmpty()) },
             exerciseCounts = counts.associate { it.dayId to it.count },
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlansUiState())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlansUiState())
 
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()

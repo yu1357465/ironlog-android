@@ -1,5 +1,9 @@
 package com.example.fitness_plan.ui
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -28,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -76,6 +81,23 @@ fun FitnessAppRoot() {
                 navController = nav,
                 startDestination = Tab.WORKOUT.route,
                 modifier = Modifier.fillMaxSize().padding(padding),
+                // 默认是 700ms 交叉淡入淡出，两个页面同时绘制，切换时明显拖沓
+                enterTransition = {
+                    if (isTabSwitch()) fadeIn(tween(TAB_FADE_MS))
+                    else slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(PUSH_MS)) + fadeIn(tween(PUSH_MS))
+                },
+                exitTransition = {
+                    if (isTabSwitch()) fadeOut(tween(TAB_FADE_MS / 2))
+                    else slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(PUSH_MS), targetOffset = { it / 4 }) + fadeOut(tween(PUSH_MS))
+                },
+                popEnterTransition = {
+                    if (isTabSwitch()) fadeIn(tween(TAB_FADE_MS))
+                    else slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(PUSH_MS), initialOffset = { it / 4 }) + fadeIn(tween(PUSH_MS))
+                },
+                popExitTransition = {
+                    if (isTabSwitch()) fadeOut(tween(TAB_FADE_MS / 2))
+                    else slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(PUSH_MS)) + fadeOut(tween(PUSH_MS))
+                },
             ) {
                 composable(Tab.WORKOUT.route) {
                     WorkoutScreen(
@@ -101,6 +123,15 @@ fun FitnessAppRoot() {
             }
         }
     }
+}
+
+private const val TAB_FADE_MS = 150
+private const val PUSH_MS = 260
+
+/** 两个底部标签之间切换只做淡入淡出；进入/返回二级页面用横向滑动。 */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.isTabSwitch(): Boolean {
+    val tabs = Tab.entries.map { it.route }
+    return initialState.destination.route in tabs && targetState.destination.route in tabs
 }
 
 private fun NavHostController.switchTab(tab: Tab) {

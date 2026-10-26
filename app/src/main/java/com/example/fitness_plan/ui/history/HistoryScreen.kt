@@ -76,7 +76,9 @@ import com.example.fitness_plan.ui.components.formatSessionDate
 import com.example.fitness_plan.ui.components.formatVolume
 import com.example.fitness_plan.ui.components.formatWeight
 import com.example.fitness_plan.ui.components.relativeDay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -92,6 +94,7 @@ data class HistoryUiState(
 
 class HistoryViewModel(private val repo: FitnessRepository, settings: SettingsRepository) : ViewModel() {
     val state = combine(repo.sessions, repo.library, settings.settings) { s, l, st -> HistoryUiState(false, s, l, st) }
+        .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HistoryUiState())
 
     fun updateEntry(entry: EntryDetail, weightKg: Double, sets: Int, reps: Int) = viewModelScope.launch {

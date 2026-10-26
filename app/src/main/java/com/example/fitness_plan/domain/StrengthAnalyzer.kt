@@ -2,20 +2,22 @@ package com.example.fitness_plan.domain
 
 import com.example.fitness_plan.data.model.MuscleGroup
 
-/** 雷达图的三种数据滤镜。 */
+/** 雷达图的三种数据滤镜：只统计对应次数区间的组。 */
 enum class RadarMode(val label: String, val repRange: IntRange) {
     OVERALL("综合", 1..15),
     STRENGTH("力量", 1..6),
-    ENDURANCE("耐力", 10..30);
-
-    /** 力量/综合用 Brzycki；高次数下 Brzycki 分母趋近 0，改用 Epley。 */
-    fun estimate1Rm(weightKg: Double, reps: Int): Double = when (this) {
-        ENDURANCE -> Strength.epley(weightKg, reps)
-        else -> Strength.brzycki(weightKg, reps)
-    }
+    ENDURANCE("耐力", 10..30),
 }
 
-data class Lift(val exerciseId: Long, val name: String, val group: MuscleGroup, val weightKg: Double, val reps: Int, val sets: Int)
+data class Lift(
+    val exerciseId: Long,
+    val name: String,
+    val group: MuscleGroup,
+    val weightKg: Double,
+    val reps: Int,
+    val sets: Int,
+    val performedAt: Long = 0L,
+)
 
 data class EnergyDistribution(val strength: Int, val hypertrophy: Int, val endurance: Int) {
     val total: Int get() = strength + hypertrophy + endurance
@@ -25,69 +27,100 @@ data class EnergyDistribution(val strength: Int, val hypertrophy: Int, val endur
 data class BestLift(val name: String, val group: MuscleGroup, val estimated1RmKg: Double)
 
 data class StrengthReport(
-    /** 六大肌群 0–100 分，顺序同 [MuscleGroup.radarGroups]。 */
+    /** 六大肌群 0–100 分；没有数据的肌群为 0。 */
     val scores: Map<MuscleGroup, Float>,
     val distribution: EnergyDistribution,
     val bestLifts: List<BestLift>,
+    /** 评分是否只用了最近 [Strength.RECENT_DAYS] 天的数据（否则说明近期没练，退回全部历史）。 */
+    val recentOnly: Boolean,
 )
 
 object Strength {
+
+    const val DEFAULT_BODY_WEIGHT = 70.0
+    const val RECENT_DAYS = 90
+    private const val DAY_MS = 86_400_000L
 
     fun brzycki(weightKg: Double, reps: Int): Double =
         if (reps <= 0 || reps >= 37) 0.0 else weightKg * 36.0 / (37.0 - reps)
 
     fun epley(weightKg: Double, reps: Int): Double =
-        if (reps <= 0) 0.0 else weightKg * (1.0 + reps / 30.0)
-
-    /** 每个肌群拿到满分（100）所需的 1RM 相当于体重的倍数。 */
-    private val bodyweightRatio = mapOf(
-        MuscleGroup.CHEST to 1.5,
-        MuscleGroup.BACK to 1.2,
-        MuscleGroup.LEGS to 2.0,
-        MuscleGroup.SHOULDERS to 1.0,
-        MuscleGroup.ARMS to 0.5,
-        MuscleGroup.CORE to 0.4,
-    )
+        if (reps <= 0) 0.0 else if (reps == 1) weightKg else weightKg * (1.0 + reps / 30.0)
 
     /**
-     * 臂展长的人推类动作行程更长（吃亏）、拉类更占优，
-     * 因此推类按 apeIndex 放大、拉类按 apeIndex 缩小，抵消杠杆差异。
+     * 估算 1RM：10 次以内 Brzycki 更准；超过 10 次 Brzycki 迅速高估（分母趋近 0），改用 Epley。
+     * 两个公式在 10 次处几乎相等，衔接平滑。
      */
-    private fun leverageCorrection(group: MuscleGroup, apeIndex: Double): Double = when (group) {
-        MuscleGroup.CHEST, MuscleGroup.SHOULDERS -> apeIndex
-        MuscleGroup.BACK, MuscleGroup.LEGS -> 1.0 / apeIndex
-        else -> 1.0
+    fun estimate1Rm(weightKg: Double, reps: Int): Double =
+        if (reps <= 10) brzycki(weightKg, reps) else epley(weightKg, reps)
+
+    /**
+     * 臂展/身高（Ape Index）对力臂的修正：推类按比例放大、拉类按比例缩小。
+     * 限制在 ±8% 以内，避免录入误差把评分拉偏。
+     */
+    private fun leverageFactor(leverage: Leverage, apeIndex: Double): Double {
+        val ape = apeIndex.coerceIn(0.92, 1.08)
+        return when (leverage) {
+            Leverage.PUSH -> ape
+            Leverage.PULL -> 1.0 / ape
+            Leverage.NONE -> 1.0
+        }
     }
 
-    fun analyze(lifts: List<Lift>, mode: RadarMode, bodyWeightKg: Double, apeIndex: Double): StrengthReport {
-        val bw = bodyWeightKg.takeIf { it > 0 } ?: DEFAULT_BODY_WEIGHT
-        val raw = mutableMapOf<MuscleGroup, Double>()
-        val best1Rm = mutableMapOf<Long, BestLift>()
+    /** 单组训练的得分（0–100+，未截断）。 */
+    fun scoreSet(lift: Lift, bodyWeightKg: Double, apeIndex: Double): Double {
+        val standard = LiftStandards.forExercise(lift.name, lift.group)
+        if (lift.weightKg <= 0 && standard.bodyweightFraction == 0.0) {
+            // 纯自重动作：按次数评分
+            val target = standard.repTarget ?: return 0.0
+            return lift.reps.toDouble() / target * 100
+        }
+        val load = lift.weightKg + bodyWeightKg * standard.bodyweightFraction
+        val rm = estimate1Rm(load, lift.reps) * leverageFactor(standard.leverage, apeIndex)
+        return rm / (bodyWeightKg * standard.ratio) * 100
+    }
 
-        lifts.filter { it.reps in mode.repRange && it.weightKg > 0 }.forEach { lift ->
-            val rm = mode.estimate1Rm(lift.weightKg, lift.reps)
-            if (rm > (best1Rm[lift.exerciseId]?.estimated1RmKg ?: 0.0)) {
-                best1Rm[lift.exerciseId] = BestLift(lift.name, lift.group, rm)
-            }
-            val ratio = bodyweightRatio[lift.group] ?: return@forEach
-            val score = rm * leverageCorrection(lift.group, apeIndex) / (bw * ratio) * 100
-            raw[lift.group] = maxOf(raw[lift.group] ?: 0.0, score)
+    fun analyze(
+        lifts: List<Lift>,
+        mode: RadarMode,
+        bodyWeightKg: Double,
+        apeIndex: Double,
+        now: Long = System.currentTimeMillis(),
+    ): StrengthReport {
+        val bw = bodyWeightKg.takeIf { it > 0 } ?: DEFAULT_BODY_WEIGHT
+        val recent = lifts.filter { it.performedAt >= now - RECENT_DAYS * DAY_MS }
+        val source = recent.ifEmpty { lifts }
+        val inMode = source.filter { it.reps in mode.repRange }
+
+        // 每个动作取最佳一组
+        val bestPerExercise = inMode.groupBy { it.exerciseId }.mapValues { (_, sets) ->
+            sets.maxOf { scoreSet(it, bw, apeIndex) }
+        }
+        val groupOf = inMode.associate { it.exerciseId to it.group }
+        val scores = MuscleGroup.radarGroups.associateWith { g ->
+            // 肌群得分 = 该肌群表现最好的动作的得分
+            val best = bestPerExercise.filterKeys { groupOf[it] == g }.values.maxOrNull() ?: 0.0
+            best.coerceIn(0.0, 100.0).toFloat()
         }
 
-        // 深蹲、硬拉、划船对核心也有大量刺激，给核心一定溢出加分
-        val coreBonus = ((raw[MuscleGroup.LEGS] ?: 0.0) + (raw[MuscleGroup.BACK] ?: 0.0)) * 0.15
-        raw[MuscleGroup.CORE] = (raw[MuscleGroup.CORE] ?: 0.0) + coreBonus
-
-        val scores = MuscleGroup.radarGroups.associateWith { (raw[it] ?: 0.0).coerceIn(0.0, 100.0).toFloat() }
+        val best1Rm = source.filter { it.reps in 1..15 && it.weightKg > 0 }
+            .groupBy { it.exerciseId }
+            .map { (_, sets) ->
+                val top = sets.maxBy { estimate1Rm(it.weightKg, it.reps) }
+                BestLift(top.name, top.group, estimate1Rm(top.weightKg, top.reps))
+            }
+            .sortedByDescending { it.estimated1RmKg }
+            .take(8)
 
         return StrengthReport(
             scores = scores,
-            distribution = distribution(lifts),
-            bestLifts = best1Rm.values.sortedByDescending { it.estimated1RmKg }.take(8),
+            distribution = distribution(source),
+            bestLifts = best1Rm,
+            recentOnly = recent.isNotEmpty(),
         )
     }
 
-    /** 能量系统分布：按组数加权统计 1–5 / 6–12 / 13+ 次。 */
+    /** 训练结构：按组数统计 1–5 / 6–12 / 13+ 次。 */
     fun distribution(lifts: List<Lift>): EnergyDistribution {
         var s = 0; var h = 0; var e = 0
         lifts.forEach {
@@ -101,6 +134,4 @@ object Strength {
         }
         return EnergyDistribution(s, h, e)
     }
-
-    const val DEFAULT_BODY_WEIGHT = 70.0
 }

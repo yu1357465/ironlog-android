@@ -62,8 +62,15 @@ app/src/main/java/com/example/fitness_plan/
 
 ```bash
 ./gradlew assembleDebug        # 调试版，包名带 .dev 后缀，可与正式版共存
+./gradlew assemblePreview      # 体验版：与正式版同样经 R8 优化，调试签名，包名带 .preview
 ./gradlew testDebugUnitTest    # 单元测试
 ```
+
+调试版的 Compose 没有经过优化，动画明显比正式版卡（实测拖拽排序约 6 成帧超时，体验版约 1 成且无严重卡顿）。判断流畅度请用体验版或正式版。
+
+## 力量评分
+
+见 `domain/StrengthAnalyzer.kt` 与 `domain/LiftStandards.kt`：每组先估算 1RM（≤10 次 Brzycki，>10 次 Epley），再除以该动作的满分标准（体重 × 倍数，按动作名关键词识别，哑铃按单只计）。引体/双杠计入体重，不负重的核心动作按次数评分。肌群取最近 90 天表现最好的动作，100 分约为进阶水平。
 
 ## 备份格式
 

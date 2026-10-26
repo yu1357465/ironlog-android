@@ -64,7 +64,9 @@ import com.example.fitness_plan.ui.components.formatVolume
 import com.example.fitness_plan.ui.components.formatWeight
 import com.example.fitness_plan.ui.theme.NumberStyle
 import com.example.fitness_plan.ui.theme.color
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -84,7 +86,7 @@ class StatsViewModel(repo: FitnessRepository, settings: SettingsRepository) : Vi
     private val mode = MutableStateFlow(RadarMode.OVERALL)
 
     val state = combine(repo.allEntries, settings.settings, mode) { entries, s, m ->
-        val lifts = entries.map { Lift(it.entry.exerciseId, it.name, it.muscleGroup, it.entry.weightKg, it.entry.reps, it.entry.sets) }
+        val lifts = entries.map { Lift(it.entry.exerciseId, it.name, it.muscleGroup, it.entry.weightKg, it.entry.reps, it.entry.sets, it.performedAt) }
         val monthAgo = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -30) }.timeInMillis
         val sessions = entries.groupBy { it.entry.sessionId }
         StatsUiState(
@@ -96,7 +98,8 @@ class StatsViewModel(repo: FitnessRepository, settings: SettingsRepository) : Vi
             sessionsLast30Days = sessions.values.count { it.first().performedAt >= monthAgo },
             totalVolumeKg = entries.sumOf { it.entry.weightKg * it.entry.sets * it.entry.reps },
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StatsUiState())
+    }.flowOn(Dispatchers.Default) // 1RM/评分计算不占用主线程
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StatsUiState())
 
     fun setMode(m: RadarMode) { mode.value = m }
 }
@@ -140,7 +143,8 @@ fun StatsScreen(onOpenSettings: () -> Unit) {
                         }
                     }
                     Text(
-                        "统计 ${state.mode.repRange.first}–${state.mode.repRange.last} 次的组",
+                        (if (report.recentOnly) "近 ${Strength.RECENT_DAYS} 天" else "全部历史（近期无训练）") +
+                            " · ${state.mode.repRange.first}–${state.mode.repRange.last} 次的组 · 100 分≈进阶水平",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp),
@@ -187,11 +191,12 @@ fun StatsScreen(onOpenSettings: () -> Unit) {
             title = { Text("评分是怎么算的") },
             text = {
                 Text(
-                    "1. 把每组训练折算成单次极限重量（1RM），再除以体重，得到相对力量；同样卧推 100kg，体重越轻得分越高。\n\n" +
-                        "2. 臂展比身高长的人推类动作行程更长、拉类更占便宜。填写身高和臂展后，会按 Ape Index 对推/拉类评分做杠杆补偿。\n\n" +
-                        "3. 力量、综合模式用 Brzycki 公式；耐力模式（10 次以上）该公式误差很大，改用 Epley 公式。\n\n" +
-                        "4. 三种模式分别只统计对应次数区间的组：力量 1–6 次、综合 1–15 次、耐力 10–30 次。\n\n" +
-                        "5. 深蹲、硬拉、划船也会锻炼核心，因此腿和背的分数会有 15% 计入核心。",
+                    "1. 每组训练先折算成单次极限重量（1RM）：10 次以内用 Brzycki 公式，超过 10 次改用 Epley（Brzycki 在高次数下会严重高估）。\n\n" +
+                        "2. 每个动作有自己的满分标准，按动作名识别：例如杠铃卧推 1RM 达到体重 1.5 倍、深蹲 1.75 倍、杠铃弯举 0.7 倍为满分；哑铃动作按单只重量计，标准相应更低。认不出的动作按所属肌群的默认标准。100 分大致相当于健身房里的“进阶”水平。\n\n" +
+                        "3. 引体向上、双杠臂屈伸会把体重计入负荷；悬垂举腿、卷腹、平板支撑等不负重的动作按次数（秒数）评分。\n\n" +
+                        "4. 肌群得分取该肌群表现最好的动作，只统计最近 ${Strength.RECENT_DAYS} 天，反映当前水平；近期没有训练时才使用全部历史。\n\n" +
+                        "5. 填写身高和臂展后，臂展较长的人推类动作得分上调、拉类（含硬拉）下调，修正幅度最多 8%。\n\n" +
+                        "6. 三种模式只是筛选不同次数区间的组：力量 1–6 次、综合 1–15 次、耐力 10–30 次。",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },
